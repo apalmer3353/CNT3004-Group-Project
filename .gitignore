@@ -1,3 +1,6 @@
 server_storage/
 __pycache__/
 .DS_Store
+
+# TLS private key
+server.key

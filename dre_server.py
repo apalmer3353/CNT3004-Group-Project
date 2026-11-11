@@ -1,5 +1,6 @@
 
 import socket
+import ssl
 import threading
 import os
 
@@ -238,10 +239,26 @@ server.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
 server.bind(("0.0.0.0", 5000))
 server.listen()
 
-print("Dre Server is running...")
+tls_context = ssl.SSLContext(ssl.PROTOCOL_TLS_SERVER)
+tls_context.load_cert_chain(
+    certfile="server.crt",
+    keyfile="server.key"
+)
+
+print("Dre Server is running with TLS encryption...")
 
 while True:
-    client, address = server.accept()
+    connection, address = server.accept()
+
+    try:
+        client = tls_context.wrap_socket(
+            connection,
+            server_side=True
+        )
+    except ssl.SSLError as error:
+        print("TLS connection failed:", error)
+        connection.close()
+        continue
 
     thread = threading.Thread(
         target=handle_client,
