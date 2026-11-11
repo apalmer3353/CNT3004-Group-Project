@@ -131,6 +131,36 @@ def handle_client(client, address):
 
                 continue
 
+            elif message.upper().startswith("DELETE "):
+                parts = message.split()
+
+                if len(parts) != 2:
+                    client.sendall(b"Use: DELETE filename\n")
+                    continue
+
+                filename = parts[1]
+
+                if not valid_filename(filename):
+                    client.sendall(b"Invalid filename\n")
+                    continue
+
+                filepath = os.path.join(STORAGE, filename)
+
+                if not os.path.isfile(filepath):
+                    client.sendall(b"File not found\n")
+                    continue
+
+                try:
+                    os.remove(filepath)
+                    client.sendall(b"File deleted successfully\n")
+                    print("Deleted:", filename)
+
+                except OSError as error:
+                    print("Delete error:", error)
+                    client.sendall(b"Unable to delete file\n")
+
+                continue
+
             else:
                 response = "Dre Server received your message!"
 
