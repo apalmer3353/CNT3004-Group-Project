@@ -161,6 +161,67 @@ def handle_client(client, address):
 
                 continue
 
+            elif message.upper().startswith("MKDIR "):
+                parts = message.split()
+
+                if len(parts) != 2:
+                    client.sendall(b"Use: MKDIR foldername\n")
+                    continue
+
+                foldername = parts[1]
+
+                if not valid_filename(foldername):
+                    client.sendall(b"Invalid folder name\n")
+                    continue
+
+                folderpath = os.path.join(STORAGE, foldername)
+
+                try:
+                    os.mkdir(folderpath)
+                    client.sendall(b"Folder created successfully\n")
+                    print("Folder created:", foldername)
+
+                except FileExistsError:
+                    client.sendall(b"Folder already exists\n")
+
+                except OSError as error:
+                    print("Folder creation error:", error)
+                    client.sendall(b"Unable to create folder\n")
+
+                continue
+
+            elif message.upper().startswith("RMDIR "):
+                parts = message.split()
+
+                if len(parts) != 2:
+                    client.sendall(b"Use: RMDIR foldername\n")
+                    continue
+
+                foldername = parts[1]
+
+                if not valid_filename(foldername):
+                    client.sendall(b"Invalid folder name\n")
+                    continue
+
+                folderpath = os.path.join(STORAGE, foldername)
+
+                if not os.path.isdir(folderpath):
+                    client.sendall(b"Folder not found\n")
+                    continue
+
+                try:
+                    os.rmdir(folderpath)
+                    client.sendall(b"Folder deleted successfully\n")
+                    print("Folder deleted:", foldername)
+
+                except OSError as error:
+                    print("Folder deletion error:", error)
+                    client.sendall(
+                        b"Unable to delete folder (may not be empty)\n"
+                    )
+
+                continue
+
             else:
                 response = "Dre Server received your message!"
 
