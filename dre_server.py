@@ -1,9 +1,19 @@
+
 import socket
 import threading
 import os
 
 STORAGE = "server_storage"
 os.makedirs(STORAGE, exist_ok=True)
+
+
+def valid_filename(filename):
+    return (
+        filename not in ("", ".", "..")
+        and os.path.basename(filename) == filename
+        and "/" not in filename
+        and "\\" not in filename
+    )
 
 
 def handle_client(client, address):
@@ -43,10 +53,7 @@ def handle_client(client, address):
                     client.sendall(b"Invalid file size\n")
                     continue
 
-                if (filename in (".", "..")
-                        or os.path.basename(filename) != filename
-                        or "/" in filename
-                        or "\\" in filename):
+                if not valid_filename(filename):
                     client.sendall(b"Invalid filename\n")
                     continue
 
@@ -55,14 +62,17 @@ def handle_client(client, address):
                 try:
                     with open(filepath, "xb") as output:
                         client.sendall(b"READY\n")
-
                         remaining = size
 
                         while remaining > 0:
-                            chunk = file_stream.read(min(65536, remaining))
+                            chunk = file_stream.read(
+                                min(65536, remaining)
+                            )
 
                             if not chunk:
-                                raise ConnectionError("Upload interrupted")
+                                raise ConnectionError(
+                                    "Upload interrupted"
+                                )
 
                             output.write(chunk)
                             remaining -= len(chunk)
@@ -73,9 +83,50 @@ def handle_client(client, address):
                     client.sendall(b"File already exists\n")
 
                 except (ConnectionError, OSError) as error:
-                    if os.path.exists(filepath):
-                        os.remove(filepath)
                     print("Upload error:", error)
+                    break
+
+                continue
+
+            elif message.upper().startswith("DOWNLOAD "):
+                parts = message.split()
+
+                if len(parts) != 2:
+                    client.sendall(b"Use: DOWNLOAD filename\n")
+                    continue
+
+                filename = parts[1]
+
+                if not valid_filename(filename):
+                    client.sendall(b"Invalid filename\n")
+                    continue
+
+                filepath = os.path.join(STORAGE, filename)
+
+                if not os.path.isfile(filepath):
+                    client.sendall(b"File not found\n")
+                    continue
+
+                try:
+                    size = os.path.getsize(filepath)
+
+                    with open(filepath, "rb") as file:
+                        client.sendall(
+                            f"SIZE {size}\n".encode()
+                        )
+
+                        while True:
+                            chunk = file.read(65536)
+
+                            if not chunk:
+                                break
+
+                            client.sendall(chunk)
+
+                    print("Download complete:", filename)
+
+                except OSError as error:
+                    print("Download error:", error)
                     break
 
                 continue
@@ -100,8 +151,11 @@ print("Dre Server is running...")
 
 while True:
     client, address = server.accept()
+
     thread = threading.Thread(
         target=handle_client,
         args=(client, address)
     )
+
     thread.start()
+
