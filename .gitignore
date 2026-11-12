@@ -7,3 +7,7 @@ server.key
 
 # Local authentication credentials
 server_users.json
+
+# TLS backup files
+server.key.backup
+server.crt.backup
