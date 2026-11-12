@@ -22,6 +22,7 @@ def valid_filename(filename):
         and os.path.basename(filename) == filename
         and "/" not in filename
         and "\\" not in filename
+        and not os.path.islink(os.path.join(STORAGE, filename))
     )
 
 
