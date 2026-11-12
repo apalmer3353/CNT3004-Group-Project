@@ -1,5 +1,8 @@
 
 import socket
+import json
+import hashlib
+import hmac
 import ssl
 import threading
 import os
@@ -17,11 +20,53 @@ def valid_filename(filename):
     )
 
 
+def authenticate_client(client, stream):
+    try:
+        with open("server_users.json") as file:
+            users = json.load(file)
+
+        client.sendall(b"Username:\n")
+        username = stream.readline().decode().strip()
+
+        client.sendall(b"Password:\n")
+        password = stream.readline().decode().rstrip("\r\n")
+
+        user = users.get(username)
+
+        if user is None:
+            client.sendall(b"Login failed\n")
+            return False
+
+        password_hash = hashlib.pbkdf2_hmac(
+            "sha256",
+            password.encode(),
+            bytes.fromhex(user["salt"]),
+            user["iterations"]
+        )
+
+        if hmac.compare_digest(
+            password_hash,
+            bytes.fromhex(user["hash"])
+        ):
+            client.sendall(b"Login successful\n")
+            return True
+
+        client.sendall(b"Login failed\n")
+        return False
+
+    except (OSError, ValueError, KeyError, UnicodeError) as error:
+        print("Authentication error:", error)
+        return False
+
+
 def handle_client(client, address):
     print("Connected to:", address)
     file_stream = client.makefile("rb")
 
     try:
+        if not authenticate_client(client, file_stream):
+            return
+
         while True:
             data = file_stream.readline()
 
