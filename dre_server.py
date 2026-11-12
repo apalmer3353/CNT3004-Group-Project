@@ -1,5 +1,6 @@
 
 import socket
+import tempfile
 import json
 import hashlib
 import hmac
@@ -9,6 +10,10 @@ import os
 
 STORAGE = "server_storage"
 os.makedirs(STORAGE, exist_ok=True)
+
+# Track files currently being uploaded or downloaded.
+active_files = set()
+active_files_lock = threading.Lock()
 
 
 def valid_filename(filename):
@@ -59,6 +64,12 @@ def authenticate_client(client, stream):
         return False
 
 
+
+def is_file_busy(filename):
+    with active_files_lock:
+        return filename in active_files
+
+
 def handle_client(client, address):
     print("Connected to:", address)
     file_stream = client.makefile("rb")
@@ -105,6 +116,12 @@ def handle_client(client, address):
 
                 filepath = os.path.join(STORAGE, filename)
 
+                with active_files_lock:
+                    if filename in active_files:
+                        client.sendall(b"File is currently being processed\n")
+                        continue
+                    active_files.add(filename)
+
                 try:
                     if os.path.lexists(filepath):
                         client.sendall(b"OVERWRITE?\n")
@@ -114,28 +131,50 @@ def handle_client(client, address):
                             client.sendall(b"Upload cancelled\n")
                             continue
 
-                    with open(filepath, "wb") as output:
-                        client.sendall(b"READY\n")
-                        remaining = size
+                    temp_path = None
 
-                        while remaining > 0:
-                            chunk = file_stream.read(
-                                min(65536, remaining)
-                            )
+                    try:
+                        with tempfile.NamedTemporaryFile(
+                            mode="wb",
+                            dir=STORAGE,
+                            prefix=".upload_",
+                            delete=False
+                        ) as output:
+                            temp_path = output.name
+                            client.sendall(b"READY\n")
+                            remaining = size
 
-                            if not chunk:
-                                raise ConnectionError(
-                                    "Upload interrupted"
+                            while remaining > 0:
+                                chunk = file_stream.read(
+                                    min(65536, remaining)
                                 )
 
-                            output.write(chunk)
-                            remaining -= len(chunk)
+                                if not chunk:
+                                    raise ConnectionError(
+                                        "Upload interrupted"
+                                    )
 
-                    client.sendall(b"Upload complete\n")
+                                output.write(chunk)
+                                remaining -= len(chunk)
+
+                        os.replace(temp_path, filepath)
+                        temp_path = None
+                        client.sendall(b"Upload complete\n")
+
+                    finally:
+                        if temp_path is not None:
+                            try:
+                                os.unlink(temp_path)
+                            except FileNotFoundError:
+                                pass
 
                 except (ConnectionError, OSError) as error:
                     print("Upload error:", error)
                     break
+
+                finally:
+                    with active_files_lock:
+                        active_files.discard(filename)
 
                 continue
 
@@ -157,6 +196,12 @@ def handle_client(client, address):
                 if not os.path.isfile(filepath):
                     client.sendall(b"File not found\n")
                     continue
+
+                with active_files_lock:
+                    if filename in active_files:
+                        client.sendall(b"File is currently being processed\n")
+                        continue
+                    active_files.add(filename)
 
                 try:
                     size = os.path.getsize(filepath)
@@ -180,6 +225,10 @@ def handle_client(client, address):
                     print("Download error:", error)
                     break
 
+                finally:
+                    with active_files_lock:
+                        active_files.discard(filename)
+
                 continue
 
             elif message.upper().startswith("DELETE "):
@@ -202,7 +251,13 @@ def handle_client(client, address):
                     continue
 
                 try:
-                    os.remove(filepath)
+                    with active_files_lock:
+                        if filename in active_files:
+                            client.sendall(b"File is currently being processed\n")
+                            continue
+
+                        os.remove(filepath)
+
                     client.sendall(b"File deleted successfully\n")
                     print("Deleted:", filename)
 
