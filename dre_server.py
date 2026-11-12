@@ -106,7 +106,15 @@ def handle_client(client, address):
                 filepath = os.path.join(STORAGE, filename)
 
                 try:
-                    with open(filepath, "xb") as output:
+                    if os.path.lexists(filepath):
+                        client.sendall(b"OVERWRITE?\n")
+                        answer = file_stream.readline().decode().strip().upper()
+
+                        if answer != "YES":
+                            client.sendall(b"Upload cancelled\n")
+                            continue
+
+                    with open(filepath, "wb") as output:
                         client.sendall(b"READY\n")
                         remaining = size
 
@@ -124,9 +132,6 @@ def handle_client(client, address):
                             remaining -= len(chunk)
 
                     client.sendall(b"Upload complete\n")
-
-                except FileExistsError:
-                    client.sendall(b"File already exists\n")
 
                 except (ConnectionError, OSError) as error:
                     print("Upload error:", error)
