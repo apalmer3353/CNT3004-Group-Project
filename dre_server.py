@@ -89,8 +89,10 @@ def handle_client(client, address):
             print("Command:", message)
 
             if message.upper() == "DIR":
-                files = os.listdir(STORAGE)
-                response = "\n".join(files) if files else "Folder is empty"
+                files = sorted(os.listdir(STORAGE))
+                response = f"DIR {len(files)}"
+                if files:
+                    response += "\n" + "\n".join(files)
 
             elif message.upper().startswith("UPLOAD "):
                 parts = message.split()
