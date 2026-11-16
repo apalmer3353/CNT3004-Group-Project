@@ -1,3 +1,7 @@
 server_storage/
 __pycache__/
 .DS_Store
+
+downloads/
+networks_stats.db
+server.crt
